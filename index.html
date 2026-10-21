@@ -484,7 +484,7 @@ function renderSettings(){
 /* ---------- 테트리스 ---------- */
 const COLS=9,ROWS=16;
 const SHAPES={
-  I:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  I:[[0,0,0],[1,1,1],[0,0,0]],
   O:[[1,1],[1,1]],
   T:[[0,1,0],[1,1,1],[0,0,0]],
   S:[[0,1,1],[1,1,0],[0,0,0]],
@@ -497,6 +497,7 @@ const KEYS=Object.keys(SHAPES);
 
 const cv=$('board'),ctx=cv.getContext('2d');
 const nc=$('nextC'),nctx=nc.getContext('2d');
+let groundTime=0,groundResets=0;const LOCK_MS=1600;
 let cell=28,board,cur,nextP,bag=[],score,lines,level,speed,running=false,paused=false,raf=0,last=0,acc=0;
 
 function sizeBoard(){
@@ -528,7 +529,7 @@ function collide(m,x,y){
   return false;
 }
 function spawn(){
-  cur=nextP||makePiece(nextKey());
+  groundTime=0;groundResets=0;cur=nextP||makePiece(nextKey());
   nextP=makePiece(nextKey());
   drawNext();
   if(collide(cur.m,cur.x,cur.y)){gameOver();return false;}
@@ -551,17 +552,18 @@ function lockPiece(){
   spawn();
 }
 function step(){
-  if(!collide(cur.m,cur.x,cur.y+1))cur.y++;else lockPiece();
+  if(!collide(cur.m,cur.x,cur.y+1))cur.y++;
 }
-function move(dx){if(!running||paused)return;if(!collide(cur.m,cur.x+dx,cur.y)){cur.x+=dx;draw();}}
+function bumpGround(){if(!collide(cur.m,cur.x,cur.y+1))return;if(groundResets<12){groundTime=0;groundResets++;}}
+function move(dx){if(!running||paused)return;if(!collide(cur.m,cur.x+dx,cur.y)){cur.x+=dx;bumpGround();draw();}}
 function rot(){
   if(!running||paused)return;
   const m=rotate(cur.m);
   for(const k of [0,-1,1,-2,2]){
-    if(!collide(m,cur.x+k,cur.y)){cur.m=m;cur.x+=k;draw();beep(500,.04);return;}
+    if(!collide(m,cur.x+k,cur.y)){cur.m=m;cur.x+=k;bumpGround();draw();beep(500,.04);return;}
   }
 }
-function softDown(){if(!running||paused)return;step();acc=0;draw();}
+function softDown(){if(!running||paused)return;if(!collide(cur.m,cur.x,cur.y+1)){cur.y++;}else{lockPiece();}acc=0;draw();}
 function hardDrop(){
   if(!running||paused)return;
   while(!collide(cur.m,cur.x,cur.y+1))cur.y++;
@@ -595,8 +597,19 @@ function drawNext(){
 }
 function loop(t){
   if(!running)return;
-  const dt=t-last;last=t;
-  if(!paused){acc+=dt;if(acc>=speed){acc=0;step();}draw();}
+  const dt=Math.min(t-last,100);last=t;
+  if(!paused&&cur){
+    let d=0;while(!collide(cur.m,cur.x,cur.y+d+1))d++;
+    if(d===0){
+      acc=0;groundTime+=dt;
+      if(groundTime>=LOCK_MS){groundTime=0;lockPiece();}
+    }else{
+      groundTime=0;acc+=dt;
+      const iv=d<=2?speed*1.7:speed;
+      if(acc>=iv){acc=0;step();}
+    }
+    draw();
+  }
   raf=requestAnimationFrame(loop);
 }
 function startGame(){
